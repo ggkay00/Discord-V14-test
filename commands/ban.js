@@ -1,6 +1,14 @@
 const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
-const { logAction } = require('../main'); // logAction doğru import edilmeli
-const { DateTime } = require('luxon'); // Tarih/saat işlemleri için
+const sqlite3 = require('sqlite3').verbose();
+const { logAction } = require('../main');
+const { DateTime } = require('luxon');
+
+// Veritabanı bağlantısı
+const db = new sqlite3.Database('bot_database.db', (err) => {
+    if (err) {
+        console.error(err.message);
+    }
+});
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -20,7 +28,7 @@ module.exports = {
     async execute(interaction) {
         const user = interaction.options.getUser('user');
         const reason = interaction.options.getString('reason') || 'Sebep belirtilmedi.';
-        const userTz = 'Europe/Istanbul'; // Varsayılan saat dilimi
+        const userTz = 'Europe/Istanbul';
 
         // Ban yetkisi kontrolü
         if (!interaction.member.permissions.has(PermissionFlagsBits.BanMembers)) {
@@ -58,5 +66,22 @@ module.exports = {
 
         // Log işlemi
         logAction(interaction.client, interaction.guild, `${user.tag} kullanıcısı ${interaction.user.tag} tarafından banlandı.`);
+
+        // Ban kaydını veritabanına ekleme
+        const banLog = {
+            discord_id: user.id,
+            reason: reason,
+            ban_time: banTimeLocal.toISO(), // Luxon ile ISO formatına çeviriyoruz
+            banned_by: interaction.user.tag
+        };
+
+        db.run('INSERT INTO ban_logs (discord_id, reason, ban_time, banned_by) VALUES (?, ?, ?, ?)', 
+            [banLog.discord_id, banLog.reason, banLog.ban_time, banLog.banned_by], 
+            function(err) {
+                if (err) {
+                    console.error('Ban kaydı oluşturulamadı:', err.message);
+                }
+            }
+        );
     }
 };
